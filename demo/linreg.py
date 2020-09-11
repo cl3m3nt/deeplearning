@@ -23,3 +23,4 @@ history = model.fit(x,y,epochs=50)
 
 prediction = model.predict([11.0])
 print(f'prediction by model: {prediction}')
+

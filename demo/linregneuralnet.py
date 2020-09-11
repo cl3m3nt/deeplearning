@@ -9,24 +9,25 @@ print(y)
 
 
 # Linear Activation Model
+'''
 model = tf.keras.models.Sequential([
     tf.keras.layers.Dense(input_shape=[1],units=10,activation='linear'),
     tf.keras.layers.Dense(units = 1,activation='linear')
 ])
 
-'''
+
 # Sigmoid Activation Model
 model = tf.keras.models.Sequential([
     tf.keras.layers.Dense(input_shape=[1],units=10,activation='sigmoid'),
     tf.keras.layers.Dense(units = 1,activation='linear')
 ])
-
+'''
 # RELU Activation Model
 model = tf.keras.models.Sequential([
     tf.keras.layers.Dense(units=10,activation='relu',input_shape=[1]),
     tf.keras.layers.Dense(units=1,activation='linear')
 ])
-'''
+
 
 model.summary()
 
@@ -36,7 +37,7 @@ model.compile(
     metrics = ['acc']
 )
 
-history = model.fit(x,y,epochs=50)
+history = model.fit(x,y,epochs=500)
 
 prediction = model.predict([11.0])
 print(f'prediction by model: {prediction}')
