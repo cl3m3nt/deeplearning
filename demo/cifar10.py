@@ -38,9 +38,13 @@ model.compile(
     metrics = ['acc']
 )
 
-# Train model
-history = model.fit(x_train,
-                    y_train,
-                    validation_data=(x_test,y_test),
-                    epochs=10                 
-)
+# Tensorboard logging
+log_dir = "./tensorboard/cifarLogs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+
+# Train Model
+model.fit(x=x_train, 
+          y=y_train, 
+          epochs=10, 
+          validation_data=(x_test, y_test), 
+          callbacks=[tensorboard_callback])
