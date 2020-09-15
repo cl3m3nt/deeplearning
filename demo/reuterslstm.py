@@ -50,7 +50,7 @@ def get_info(text_data:np.ndarray):
 
 
 # Define model
-vocab_size = len(word_index)+1
+vocab_size = len(word_index)+3
 embedding_dim = 16
 max_length = 120
 
