@@ -83,8 +83,8 @@ tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram
 
 # Train model
 model.fit(x_train,y_train,
-    validation_data=(x_test,y_train),
+    validation_data=(x_test,y_test),
     callbacks=tensorboard_callback,
     epochs=5,
-    batch_size=32
+    batch_size=128
     )
