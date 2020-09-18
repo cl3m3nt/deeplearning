@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger()
 
 # Get Data from TFDS as Tensorflow dataset
-imdb = tfds.load('imdb_reviews',as_supervised=True)
+imdb = tfds.load('imdb_reviews',as_supervised=True) # loads imdb as tensor Dataset
 dataset_train , dataset_test = imdb['train'],imdb['test']
 
 # Print out sample values

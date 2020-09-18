@@ -41,19 +41,20 @@ def df_time_sample(dataframe:pd.DataFrame):
 
 # Temp Dataframe + Datetime pre-processing
 df['Date'] = pd.to_datetime(df['Date Time'],format='%d.%m.%Y %H:%M:%S')
-df['Year'] =df['Date'].dt.year
-df['Month'] =df['Date'].dt.month
-df['Day'] =df['Date'].dt.day
-df['Hour'] =df['Date'].dt.hour
-df['Minute'] =df['Date'].dt.minute
-df['Second'] =df['Date'].dt.second
+df['Year'] = df['Date'].dt.year
+df['Month'] = df['Date'].dt.month
+df['Day'] = df['Date'].dt.day
+df['Hour'] = df['Date'].dt.hour
+df['Minute'] = df['Date'].dt.minute
+df['Second'] = df['Date'].dt.second
 
 # Groupby operation example
-df_by_year =df.groupby(['Year']).mean ()
-df_by_month =df.groupby(['Month']).mean()
-df_by_day =df.groupby(['Day']).mean()
-df_by_year_month =df.groupby(['Year','Month']).mean ()
-df_by_year_month_day =df.groupby(['Year','Month','Day']).mean ()
+def group_by():
+    df_by_year = df.groupby(['Year']).mean ()
+    df_by_month = df.groupby(['Month']).mean()
+    df_by_day = df.groupby(['Day']).mean()
+    df_by_year_month = df.groupby(['Year','Month']).mean ()
+    df_by_year_month_day = df.groupby(['Year','Month','Day']).mean ()
 
 # Visualize some feature: Temperature, Pressure, Rho
 # Overall Time Series
@@ -80,7 +81,6 @@ def clean_maxwv(dataframe:pd.DataFrame):
 
 clean_wv(df)
 clean_maxwv(df)
-
 
 # Feature Engineering: Wind Vector & Max Wind Vector = wv + wd 
 df['wd (rad)'] = df['wd (deg)'] * np.pi/180
@@ -136,8 +136,16 @@ df['y Year'] = np.sin(timestamp_s * (2 * np.pi /year))
 columns_indices = {name: i for i, name in enumerate(df.columns)}
 n = len(df)
 
+# Remove unessary feature
 df.pop('Date Time')
 df.pop('Date')
+df.pop('Year')
+df.pop('Month')
+df.pop('Day')
+df.pop('Hour')
+df.pop('Minute')
+df.pop('Second')
+
 df_train = df[0:int(n*0.7)]
 df_val = df[int(n*0.7):int(n*0.9)]
 df_test = df[int(n*0.9):]
@@ -156,9 +164,91 @@ def plot_normalized():
     plt.figure(figsize=(12, 6))
     ax = sns.violinplot(x='Column', y='Normalized', data=df_std)
     _ = ax.set_xticklabels(df.keys(), rotation=90)
+
 ########### End Pre-process Data ###########
 
 
-###########  Time Series Dataset ###########
+###########  Time Series Dataset Pre-Processing ###########
+# Using WindowGenerator Object that holds: train,val,test sets as DataFrame and Labels
+# 24 x input_feature, 24 x offset (horizon?) step, label 1 step
 w1 = WindowGenerator(input_width=24, label_width=1, shift=24,train_df=df_train,val_df=df_val,test_df=df_test,label_columns=['T (degC)'])
 print(w1)
+# 24 x input_feature, 1 x offset step (horizon?), label 1 step = horizon = 1
+w2 = WindowGenerator(input_width=47,label_width=1,shift=1,train_df=df_train,val_df=df_val,test_df=df_test,label_columns=['T (degC)'])
+print(w2)
+
+# Work out with Dataframe, Numpy, Tensor
+data_train = w2.train_df.copy()
+y_train = data_train.pop('T (degC)') #df
+print(y_train.shape)
+y_train = y_train.to_numpy() #np array, loses columns name
+print(y_train.shape)
+x_train = data_train #df
+print(x_train.shape)
+x_train = x_train.to_numpy() #np array, loses columns name
+print(x_train.shape)
+data_train_tf = tf.data.Dataset.from_tensor_slices((x_train,y_train))
+
+# Work out with DataFrame, Window, Numpy, Tensor for Time Series
+data_train = w2.train_df.copy()
+window0_df = data_train[:w2.total_window_size*2]
+data_window0_df = window0_df.pop('T (degC)')
+data_window0_tf = tf.keras.preprocessing.timeseries_dataset_from_array(data=data_window0_df,targets=None,sequence_length=w2.total_window_size)
+sample = data_window0_tf.take(2)
+for feature in sample:
+    print(feature)
+
+# First, do tensor slices of 48-length (47 x feat + 1 x label) from the whole Dataframe
+data_train_df = w2.train_df.copy()
+max_index = int(len(data_train_df))
+window_size = w2.total_window_size
+data_window_list = []
+for i in range(0,max_index,window_size):
+    data_window_list.append(data_train_df[i:i+window_size])
+
+# Extract now only the T (degC) columns to create x_train,y_train
+window_data_train = []
+for window in data_window_list:
+    window_data_train.append(window['T (degC)'])
+x_train = []
+y_train = []
+for window in window_data_train:
+    x_train.append(np.array(window[0:47]))
+    y_train.append(np.array(window[47:]))
+
+
+def split_window(self, features):
+  inputs = features[:, self.input_slice, :]
+  labels = features[:, self.labels_slice, :]
+  if self.label_columns is not None:
+    labels = tf.stack(
+        [labels[:, :, self.column_indices[name]] for name in self.label_columns],
+        axis=-1)
+
+  # Slicing doesn't preserve static shape information, so set the shapes
+  # manually. This way the `tf.data.Datasets` are easier to inspect.
+  inputs.set_shape([None, self.input_width, None])
+  labels.set_shape([None, self.label_width, None])
+
+  return inputs, labels
+
+WindowGenerator.split_window = split_window
+
+# Stack three slices, the length of the total window:
+example_window = tf.stack([np.array(train_df[:w2.total_window_size]),
+                           np.array(train_df[100:100+w2.total_window_size]),
+                           np.array(train_df[200:200+w2.total_window_size])])
+
+
+example_inputs, example_labels = w2.split_window(example_window)
+
+print('All shapes are: (batch, time, features)')
+print(f'Window shape: {example_window.shape}')
+print(f'Inputs shape: {example_inputs.shape}')
+print(f'labels shape: {example_labels.shape}')
+
+
+
+
+
+
