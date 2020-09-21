@@ -177,46 +177,36 @@ print(w1)
 w2 = WindowGenerator(input_width=47,label_width=1,shift=1,train_df=df_train,val_df=df_val,test_df=df_test,label_columns=['T (degC)'])
 print(w2)
 
-# Work out with Dataframe, Numpy, Tensor
-data_train = w2.train_df.copy()
-y_train = data_train.pop('T (degC)') #df
-print(y_train.shape)
-y_train = y_train.to_numpy() #np array, loses columns name
-print(y_train.shape)
-x_train = data_train #df
-print(x_train.shape)
-x_train = x_train.to_numpy() #np array, loses columns name
-print(x_train.shape)
-data_train_tf = tf.data.Dataset.from_tensor_slices((x_train,y_train))
+# Work out with Dataframe, Numpy, Tensor: Cast df to tf
+def df_to_tensorSlice_tf(dataframe:pd.DataFrame,label:str)->pd.DataFrame:
+    data_df = dataframe.copy()
+    y_data_df = data_df.pop(label)
+    y_data_np = np.array(y_data_df)
+    x_data_np = np.array(data_df)
+    dataset_tf = tf.data.Dataset.from_tensor_slices((x_data_np,y_data_np))
+    return dataset_tf
 
-# Work out with DataFrame, Window, Numpy, Tensor for Time Series
-data_train = w2.train_df.copy()
-window0_df = data_train[:w2.total_window_size*2]
-data_window0_df = window0_df.pop('T (degC)')
-data_window0_tf = tf.keras.preprocessing.timeseries_dataset_from_array(data=data_window0_df,targets=None,sequence_length=w2.total_window_size)
-sample = data_window0_tf.take(2)
-for feature in sample:
-    print(feature)
+def tf_to_np(dataset:object)->np.array:
+    data = dataset.take(1)
+    for feature,label in data:
+        feature_np = feature.numpy()
+        label_np = label.numpy()
+    return feature_np,label_np
 
-# First, do tensor slices of 48-length (47 x feat + 1 x label) from the whole Dataframe
-data_train_df = w2.train_df.copy()
-max_index = int(len(data_train_df))
-window_size = w2.total_window_size
-data_window_list = []
-for i in range(0,max_index,window_size):
-    data_window_list.append(data_train_df[i:i+window_size])
+# This function create Time Series batch of TF Data
+def df_to_batch_TS_tf(dataframe:pd.DataFrame,batch_size)->object:
+    data_batch_TS_tf = tf.keras.preprocessing.timeseries_dataset_from_array(dataframe,targets=None,sequence_length=48,batch_size=batch_size)
+    return data_batch_TS_tf
 
-# Extract now only the T (degC) columns to create x_train,y_train
-window_data_train = []
-for window in data_window_list:
-    window_data_train.append(window['T (degC)'])
-x_train = []
-y_train = []
-for window in window_data_train:
-    x_train.append(np.array(window[0:47]))
-    y_train.append(np.array(window[47:]))
+# Check Time Series Batch dimension
+def check_TS_dim(ts_tf_batch:object)->tuple:
+    sample = ts_tf_batch.take(1)
+    for data in sample:
+        dim = data.numpy().shape
+    return dim
 
 
+# Split Data based on indices (not column name as working with TF)
 def split_window(self, features):
   inputs = features[:, self.input_slice, :]
   labels = features[:, self.labels_slice, :]
@@ -224,14 +214,26 @@ def split_window(self, features):
     labels = tf.stack(
         [labels[:, :, self.column_indices[name]] for name in self.label_columns],
         axis=-1)
-
   # Slicing doesn't preserve static shape information, so set the shapes
   # manually. This way the `tf.data.Datasets` are easier to inspect.
   inputs.set_shape([None, self.input_width, None])
   labels.set_shape([None, self.label_width, None])
-
   return inputs, labels
 
+# Testing Windowing + Split process
+final_data = df_to_batch_TS_tf(df,64) # create 48-length window batches of size 64
+print(len(final_data))
+final_sample = final_data.take(1) # take a single batch of 64 x 48-length windows of 23 x columns
+for e in final_sample:
+    data = e
+sample_inputs, sample_labels = w2.split_window(data)
+print(sample_inputs.shape)
+print(type(sample_inputs))
+print(sample_labels.shape)
+print(type(sample_labels))
+
+
+# Adding split window function to Window Generator object
 WindowGenerator.split_window = split_window
 
 # Stack three slices, the length of the total window:
@@ -247,8 +249,56 @@ print(f'Window shape: {example_window.shape}')
 print(f'Inputs shape: {example_inputs.shape}')
 print(f'labels shape: {example_labels.shape}')
 
+def make_dataset(self, data):
+  data = np.array(data, dtype=np.float32)
+  ds = tf.keras.preprocessing.timeseries_dataset_from_array(
+      data=data,
+      targets=None,
+      sequence_length=self.total_window_size,
+      sequence_stride=1,
+      shuffle=True,
+      batch_size=32,)
+
+  ds = ds.map(self.split_window)
+
+  return ds
+
+WindowGenerator.make_dataset = make_dataset
 
 
+# Create Final train_data dataset, using make_dataset helper function
+# make_dataset creates, batch of windowed data, then split window into input and labels
+train_data = w2.make_dataset(w2.train_df)
+test = train_data.take(1)
+for input,label in test:
+    print(input)
+    print(label)
 
 
+@property
+def train(self):
+  return self.make_dataset(self.train_df)
 
+@property
+def val(self):
+  return self.make_dataset(self.val_df)
+
+@property
+def test(self):
+  return self.make_dataset(self.test_df)
+
+@property
+def example(self):
+  """Get and cache an example batch of `inputs, labels` for plotting."""
+  result = getattr(self, '_example', None)
+  if result is None:
+    # No example batch was found, so get one from the `.train` dataset
+    result = next(iter(self.train))
+    # And cache it for next time
+    self._example = result
+  return result
+
+WindowGenerator.train = train
+WindowGenerator.val = val
+WindowGenerator.test = test
+WindowGenerator.example = example
