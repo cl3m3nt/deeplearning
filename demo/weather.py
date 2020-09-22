@@ -177,7 +177,7 @@ print(w1)
 w2 = WindowGenerator(input_width=47,label_width=1,shift=1,train_df=df_train,val_df=df_val,test_df=df_test,label_columns=['T (degC)'])
 print(w2)
 
-# Work out with Dataframe, Numpy, Tensor: Cast df to tf
+# Work out with Dataframe, Numpy, Tensor: Cast df to tf - no window
 def df_to_tensorSlice_tf(dataframe:pd.DataFrame,label:str)->pd.DataFrame:
     data_df = dataframe.copy()
     y_data_df = data_df.pop(label)
@@ -186,6 +186,7 @@ def df_to_tensorSlice_tf(dataframe:pd.DataFrame,label:str)->pd.DataFrame:
     dataset_tf = tf.data.Dataset.from_tensor_slices((x_data_np,y_data_np))
     return dataset_tf
 
+# Work out Tensor to Numpy
 def tf_to_np(dataset:object)->np.array:
     data = dataset.take(1)
     for feature,label in data:
@@ -205,7 +206,6 @@ def check_TS_dim(ts_tf_batch:object)->tuple:
         dim = data.numpy().shape
     return dim
 
-
 # Split Data based on indices (not column name as working with TF)
 def split_window(self, features):
   inputs = features[:, self.input_slice, :]
@@ -220,6 +220,9 @@ def split_window(self, features):
   labels.set_shape([None, self.label_width, None])
   return inputs, labels
 
+  # Adding split window function to Window Generator object
+WindowGenerator.split_window = split_window
+
 # Testing Windowing + Split process
 final_data = df_to_batch_TS_tf(df,64) # create 48-length window batches of size 64
 print(len(final_data))
@@ -232,22 +235,6 @@ print(type(sample_inputs))
 print(sample_labels.shape)
 print(type(sample_labels))
 
-
-# Adding split window function to Window Generator object
-WindowGenerator.split_window = split_window
-
-# Stack three slices, the length of the total window:
-example_window = tf.stack([np.array(train_df[:w2.total_window_size]),
-                           np.array(train_df[100:100+w2.total_window_size]),
-                           np.array(train_df[200:200+w2.total_window_size])])
-
-
-example_inputs, example_labels = w2.split_window(example_window)
-
-print('All shapes are: (batch, time, features)')
-print(f'Window shape: {example_window.shape}')
-print(f'Inputs shape: {example_inputs.shape}')
-print(f'labels shape: {example_labels.shape}')
 
 def make_dataset(self, data):
   data = np.array(data, dtype=np.float32)
@@ -274,7 +261,7 @@ for input,label in test:
     print(input)
     print(label)
 
-
+# Add train, val, test, example method to WindowGenerator
 @property
 def train(self):
   return self.make_dataset(self.train_df)
@@ -302,3 +289,172 @@ WindowGenerator.train = train
 WindowGenerator.val = val
 WindowGenerator.test = test
 WindowGenerator.example = example
+
+# Finally create train, val, test data batch of shape 32 x 47 x 23
+# where 32 is batch size, 47 is time window size, 23 is feature size
+train_data = w2.train
+val_data = w2.val
+test_data = w2.test
+logger.info(f'Train data shape of input and label: {train_data.element_spec}\n')
+logger.info(f'Val data shape of input and label: {val_data.element_spec}\n')
+logger.info(f'Test data shape of input and label: {test_data.element_spec}\n')
+train_example = train_data.take(1)
+val_example = val_data.take(1)
+test_example = test_data.take(1)
+
+def plot(self, model=None, plot_col='T (degC)', max_subplots=3):
+  inputs, labels = self.example
+  plt.figure(figsize=(12, 8))
+  plot_col_index = self.column_indices[plot_col]
+  max_n = min(max_subplots, len(inputs))
+  for n in range(max_n):
+    plt.subplot(3, 1, n+1)
+    plt.ylabel(f'{plot_col} [normed]')
+    plt.plot(self.input_indices, inputs[n, :, plot_col_index],
+             label='Inputs', marker='.', zorder=-10)
+
+    if self.label_columns:
+      label_col_index = self.label_columns_indices.get(plot_col, None)
+    else:
+      label_col_index = plot_col_index
+
+    if label_col_index is None:
+      continue
+
+    plt.scatter(self.label_indices, labels[n, :, label_col_index],
+                edgecolors='k', label='Labels', c='#2ca02c', s=64)
+    if model is not None:
+      predictions = model(inputs)
+      plt.scatter(self.label_indices, predictions[n, :, label_col_index],
+                  marker='X', edgecolors='k', label='Predictions',
+                  c='#ff7f0e', s=64)
+
+    if n == 0:
+      plt.legend()
+
+  plt.xlabel('Time [h]')
+
+WindowGenerator.plot = plot
+
+###########  Time Series End of Pre-Processing ###########
+
+
+
+###########  Deep Learning Modeling ###########
+
+# Baseline: does not require to create the TF Dataset
+# Using single time step == window of sequence_length=1 for 1h
+logger.info(f'Single Time Step modeling')
+w_single = WindowGenerator(input_width=1,label_width=1,shift=1,label_columns=['T (degC)'],train_df=df_train,val_df=df_val,test_df=df_val)
+logger.info(f'{w_single}')
+
+class Baseline(tf.keras.Model):
+  def __init__(self, label_index=None):
+    super().__init__()
+    self.label_index = label_index
+
+  def call(self, inputs):
+    if self.label_index is None:
+      return inputs
+    result = inputs[:, :, self.label_index]
+    return result[:, :, tf.newaxis]
+
+logger.info(f'Predicting only next hour value with 1 time step')
+# Define Model
+baseline_model = Baseline(label_index=columns_indices['T (degC)'])
+
+# Compile Model
+baseline_model.compile(
+    loss = tf.losses.MeanSquaredError(),
+    metrics = tf.metrics.MeanAbsoluteError()
+)
+
+# Evalutate model for input_length of 1 and label_length of 1
+val_performance = {}
+test_performance = {}
+val_performance['Baseline'] = baseline_model.evaluate(w_single.val)
+test_performance['Baseline'] = baseline_model.evaluate(w_single.test)
+
+# Using single time step == window of sequence_length=1 for 24h
+logger.info(f'Predicting 24 hour values with 1 time step')
+w_single_wide = WindowGenerator(input_width=24,label_width=24,shift=1,train_df=df_train,val_df=df_val,test_df=df_val,label_columns=['T (degC)'])
+logger.info(f'{w_single_wide}')
+
+# Evaluate model for input_length of 24 and label_length of 24
+val_performance = {}
+test_performance = {}
+val_performance['Baseline'] = baseline_model.evaluate(w_single_wide.val)
+test_performance['Baseline'] = baseline_model.evaluate(w_single_wide.test)
+
+w_single_wide.plot(baseline_model)
+
+####### Linear Model: Single Neuron Neural Network
+def build_linear_model():
+    linear_model = tf.keras.Sequential([
+        tf.keras.layers.Dense(units=1)
+    ])
+
+    linear_model.compile(
+        optimizer = 'adam',
+        loss = tf.losses.MeanSquaredError(),
+        metrics = tf.metrics.MeanAbsoluteError()
+    )
+    return linear_model
+
+# Train & Evaluate on w_single
+linear_model = build_linear_model()
+linear_model.fit(w_single.train,
+                validation_data=w_single.val,
+                epochs=5
+)
+
+linear_model.evaluate(w_single.test)
+test_performance['Linear'] = linear_model.evaluate(w_single.test)
+
+ # Train & Evaluate on w_single_wide
+linear_model_wide = build_linear_model()
+linear_model_wide.fit(w_single_wide.train,
+    validation_data = w_single_wide.val,
+    epochs=5
+)
+linear_model_wide.evaluate(w_single_wide.test)
+test_performance['Linear'] = linear_model.evaluate(w_single_wide.test)
+
+w_single_wide.plot(linear_model_wide)
+
+######## Dense Neural Network: 2 x hidden layers
+def build_dense_neural_network(input_dim):
+  dense_neural_network = tf.keras.Sequential([
+    tf.keras.layers.Dense(units=8,activation='relu',input_shape=input_dim),
+    tf.keras.layers.Dense(units=16,activation='relu'),
+    tf.keras.layers.Dense(units=1)
+  ])
+
+  dense_neural_network.compile(
+    optimizer = 'adam',
+    loss = tf.losses.MeanSquaredError(),
+    metrics = tf.metrics.MeanAbsoluteError()
+  )
+  return dense_neural_network
+
+
+# Train & Evaluate on w_single
+dense_neural_network = build_dense_neural_network((1,23))
+dense_neural_network.summary()
+dense_neural_network.fit(w_single.train,
+    validation_data=w_single.val,
+    epochs=5
+  )
+dense_neural_network.evaluate(w_single.test)
+
+
+# Train & Evaluate on w_single_wide
+dense_neural_network = build_dense_neural_network((24,23))
+dense_neural_network.fit(w_single_wide.train,
+    validation_data=w_single_wide.val,
+    epochs=5
+)
+w_single_wide.plot(dense_neural_network)
+dense_neural_network.evaluate(w_single_wide.test)
+test_performance['Dense'] = dense_neural_network.evaluate(w_single_wide.test)
+
