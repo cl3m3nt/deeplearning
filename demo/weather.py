@@ -344,10 +344,10 @@ WindowGenerator.plot = plot
 
 #### 1-step prediction ###
 # Baseline: does not require to create the TF Dataset
-# Using single time step == window of sequence_length=1 for 1h
-logger.info(f'Single Time Step modeling')
-w_single = WindowGenerator(input_width=1,label_width=1,shift=1,label_columns=['T (degC)'],train_df=df_train,val_df=df_val,test_df=df_val)
-logger.info(f'{w_single}')
+logger.info(f'#### Single Time Step modeling 1h ####')
+logger.info(f'Using 1 x t = 1 record of 23 x columns to predict T at t+1')
+w_1h = WindowGenerator(input_width=1,label_width=1,shift=1,label_columns=['T (degC)'],train_df=df_train,val_df=df_val,test_df=df_val)
+logger.info(f'{w_1h}')
 
 class Baseline(tf.keras.Model):
   def __init__(self, label_index=None):
@@ -360,35 +360,34 @@ class Baseline(tf.keras.Model):
     result = inputs[:, :, self.label_index]
     return result[:, :, tf.newaxis]
 
-logger.info(f'Predicting only next hour value with 1 time step')
-# Define Model
+# Define & Compile Model
 baseline_model = Baseline(label_index=columns_indices['T (degC)'])
-
-# Compile Model
 baseline_model.compile(
     loss = tf.losses.MeanSquaredError(),
     metrics = tf.metrics.MeanAbsoluteError()
 )
 
-# Evalutate model for input_length of 1 and label_length of 1
-val_performance = {}
-test_performance = {}
-val_performance['Baseline'] = baseline_model.evaluate(w_single.val)
-test_performance['Baseline'] = baseline_model.evaluate(w_single.test)
+# NO TRAINING REQUIRE FOR BASELINE MODEL
 
-# Using single time step == window of sequence_length=1 for 24h
-logger.info(f'Predicting 24 hour values with 1 time step')
-w_single_wide = WindowGenerator(input_width=3,label_width=24,shift=1,train_df=df_train,val_df=df_val,test_df=df_val,label_columns=['T (degC)'])
-logger.info(f'{w_single_wide}')
+# Evalutate model for input_length of 1 and label_length of 1
+val_performance_1h = {}
+test_performance_1h = {}
+val_performance_1h['Baseline'] = baseline_model.evaluate(w_1h.val)
+test_performance_1h['Baseline'] = baseline_model.evaluate(w_1h.test)
+
+logger.info(f'#### Single Time Step modeling 24h ####')
+logger.info(f'Using 24 x t = 24 record of 23 x columns to predict T for [t+1,t+2,...,t+24]')
+w_24h = WindowGenerator(input_width=24,label_width=24,shift=1,train_df=df_train,val_df=df_val,test_df=df_val,label_columns=['T (degC)'])
+logger.info(f'{w_24h}')
 
 # Evaluate model for input_length of 24 and label_length of 24
 val_performance = {}
 test_performance = {}
-val_performance['Baseline'] = baseline_model.evaluate(w_single_wide.val)
-test_performance['Baseline'] = baseline_model.evaluate(w_single_wide.test)
+val_performance['Baseline'] = baseline_model.evaluate(w_24h.val)
+test_performance['Baseline'] = baseline_model.evaluate(w_24h.test)
 logger.info(test_performance)
 
-w_single_wide.plot(baseline_model)
+w_24h.plot(baseline_model)
 
 ####### Linear Model: Single Neuron Neural Network
 def build_linear_model():
@@ -403,30 +402,95 @@ def build_linear_model():
     )
     return linear_model
 
-# Train & Evaluate on w_single
+# Train & Evaluate on w_1h
 linear_model = build_linear_model()
-linear_model.fit(w_single.train,
-                validation_data=w_single.val,
+linear_model.fit(w_1h.train,
+                validation_data=w_1h.val,
                 epochs=5
 )
 
-linear_model.evaluate(w_single.test)
-test_performance['Linear'] = linear_model.evaluate(w_single.test)
+linear_model.evaluate(w_1h.test)
+val_performance_1h['Linear'] = linear_model.evaluate(w_1h.val)
+test_performance_1h['Linear'] = linear_model.evaluate(w_1h.test)
 
-# Train & Evaluate on w_single_wide
+# Train & Evaluate on w_24h
 linear_model_wide = build_linear_model()
-linear_model_wide.fit(w_single_wide.train,
-    validation_data = w_single_wide.val,
+linear_model_wide.fit(w_24h.train,
+    validation_data = w_24h.val,
     epochs=5
 )
-linear_model_wide.evaluate(w_single_wide.test)
-test_performance['Linear'] = linear_model.evaluate(w_single_wide.test)
+linear_model_wide.evaluate(w_24h.test)
+test_performance['Linear'] = linear_model.evaluate(w_24h.test)
 logger.info(test_performance)
 
-w_single_wide.plot(linear_model_wide)
+w_24h.plot(linear_model_wide)
 
-######## Dense Neural Network: 2 x hidden layers
+######## Dense Neural Network: 2 x hidden layers on 1 time step
+######## Dense Neural Network Dim
 def build_dense_neural_network(input_dim,layer_size):
+  dense_neural_network = tf.keras.Sequential([
+    tf.keras.layers.Input(shape=input_dim),
+    tf.keras.layers.Dense(units=layer_size,activation='relu'),
+    tf.keras.layers.Dense(units=layer_size,activation='relu'),
+    tf.keras.layers.Dense(units=1)
+  ])
+
+  dense_neural_network.compile(
+    optimizer = 'adam',
+    loss = tf.losses.MeanSquaredError(),
+    metrics = tf.metrics.MeanAbsoluteError()
+  )
+  return dense_neural_network
+
+# fit with w_1h and w_24h with neural_network
+dense_neural_network = build_dense_neural_network((1,23),8)
+dense_neural_network.summary()
+dense_neural_network.fit(w_1h.train,
+  validation_data=w_1h.val,
+  epochs=5
+)
+dense_neural_network = build_dense_neural_network((24,23),8)
+dense_neural_network.summary()
+dense_neural_network.fit(w_24h.train,
+  validation_data=w_24h.val,
+  epochs=5
+)
+
+
+######## Dense Neural Network nodim
+def build_dense_neural_network_nodim(layer_size):
+  dense_neural_network = tf.keras.Sequential([
+    tf.keras.layers.Dense(units=layer_size,activation='relu'),
+    tf.keras.layers.Dense(units=layer_size,activation='relu'),
+    tf.keras.layers.Dense(units=1)
+  ])
+
+  dense_neural_network.compile(
+    optimizer = 'adam',
+    loss = tf.losses.MeanSquaredError(),
+    metrics = tf.metrics.MeanAbsoluteError()
+  )
+  return dense_neural_network
+
+dense_neural_network_noin = build_dense_neural_network_nodim(8)
+
+# fit with w_1h and w_24h with neural_network_nodim
+dense_neural_network_noin.fit(w_1h.train,
+  validation_data=w_1h.val,
+  epochs=5
+)
+
+dense_neural_network_noin.fit(w_24h.train,
+  validation_data = w_24h.val,
+  epochs=5
+)
+
+######## Dense Neural Network over 24h to interlock more than 1 step
+
+w_24h_wide = WindowGenerator(input_width=24,label_width=1,shift=1,train_df=df_train,val_df=df_val,test_df=df_val,label_columns=['T (degC)'])
+
+######## Dense Neural Network Flatten
+def build_dense_neural_network_flat(input_dim,layer_size):
   dense_neural_network = tf.keras.Sequential([
     tf.keras.layers.Flatten(input_shape=input_dim),
     tf.keras.layers.Dense(units=layer_size,activation='relu'),
@@ -441,53 +505,37 @@ def build_dense_neural_network(input_dim,layer_size):
   )
   return dense_neural_network
 
-
-def build_dense_neural_network(input_dim,layer_size):
-  dense_neural_network = tf.keras.Sequential([
-    tf.keras.layers.Input(shape=input_dim),
-    tf.keras.layers.Dense(units=layer_size,activation='relu'),
-    tf.keras.layers.Dense(units=layer_size,activation='relu'),
-    tf.keras.layers.Dense(units=1)
-  ])
-
-  dense_neural_network.compile(
-    optimizer = 'adam',
-    loss = tf.losses.MeanSquaredError(),
-    metrics = tf.metrics.MeanAbsoluteError()
-  )
-  return dense_neural_network
-dense_neural_network = build_dense_neural_network((24,23),8)
-dense_neural_network.summary()
-
-# Train & Evaluate on w_single
-dense_neural_network = build_dense_neural_network((1,23),8)
-dense_neural_network.summary()
-dense_neural_network.fit(w_single.train,
-    validation_data=w_single.val,
+# Train & Evaluate on w_1h - flatten reduce 1 Dimension: (1,23) becomes (1x23)
+dense_neural_network_flat = build_dense_neural_network_flat((1,23),8)
+dense_neural_network_flat.summary()
+dense_neural_network_flat.fit(w_1h.train,
+    validation_data=w_1h.val,
     epochs=5
   )
-dense_neural_network.evaluate(w_single.test)
+dense_neural_network_flat.evaluate(w_1h.test)
 
 
-# Train & Evaluate on w_single_wide
-dense_neural_network = build_dense_neural_network((24,23),8)
-dense_neural_network.summary()
-dense_neural_network.fit(w_single_wide.train,
-    validation_data=w_single_wide.val,
+# Train & Evaluate on w_single_wide - flatten reduces 1 Dimension: (24,23) becomes (24x23)
+dense_neural_network_flat = build_dense_neural_network_flat((24,23),8)
+dense_neural_network_flat.summary()
+dense_neural_network_flat.fit(w_24h_wide.train,
+    validation_data=w_24h_wide.val,
     epochs=5
 )
-w_single_wide.plot(dense_neural_network)
-dense_neural_network.evaluate(w_single_wide.test)
-test_performance['Dense128'] = dense_neural_network.evaluate(w_single_wide.test)
+w_24h_wide.plot(dense_neural_network)
+dense_neural_network_flat.evaluate(w_24h_wide.test)
+test_performance['Dense8'] = dense_neural_network_flat.evaluate(w_24h_wide.test)
 logger.info(test_performance)
 
-######## Convolutional Neural Network
+# Remark: when there is flatten, the last Dimension size disapear from the next layer output
+# Remark: where there is a Dense Layer, the output dimension is of size the number of Neurons
+
+
+######## Convolutional Neural Network - no need to flatten here, the convolution takes multiple time step into account
 def build_conv_network(input_dim,kernel_size):
   conv_network = tf.keras.models.Sequential([
     tf.keras.layers.Conv1D(filters=8,kernel_size=kernel_size,activation='relu',input_shape=input_dim),
-    #tf.keras.layers.Conv1D(filters=8,kernel_size=kernel_size,activation='relu'),
     tf.keras.layers.Dense(units=8,activation='relu'),
-    # tf.keras.layers.flatten might be required ?
     tf.keras.layers.Dense(units=1)
   ])
 
@@ -498,15 +546,17 @@ def build_conv_network(input_dim,kernel_size):
   )
   return conv_network
 
-w_single_wide = WindowGenerator(input_width=6,label_width=1,shift=1,train_df=df_train,val_df=df_val,test_df=df_val,label_columns=['T (degC)'])
-conv_net_model = build_conv_network((6,23),3) # size of 1st dim input must = of > kernel size
+
+w_24h_wide = WindowGenerator(input_width=24,label_width=1,shift=1,train_df=df_train,val_df=df_val,test_df=df_val,label_columns=['T (degC)'])
+
+conv_net_model = build_conv_network((24,23),24) # size of 1st dim input must = of > kernel size
 conv_net_model.summary()
-conv_net_model.fit(w_single_wide.train,
-                  validation_data=w_single_wide.val,
+conv_net_model.fit(w_24h_wide.train,
+                  validation_data=w_24h_wide.val,
                   epochs=5
 )
 
-test_performance['ConvNet'] = conv_net_model.evaluate(w_single_wide.test)
+test_performance['ConvNet'] = conv_net_model.evaluate(w_24h_wide.test)
 logger.info(test_performance)
 
 ######## LSTM Neural Network
@@ -514,8 +564,9 @@ logger.info(test_performance)
 def build_lstm_network(input_dim):
   lstm_network = tf.keras.models.Sequential([
     tf.keras.layers.Input(shape=input_dim),
-    tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(8,return_sequences=True)),
-    tf.keras.layers.Dense(units=8,activation='relu'),
+    tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(8)), 
+    #tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(8,return_sequences=True)),
+    #tf.keras.layers.Dense(units=8,activation='relu'),
     tf.keras.layers.Dense(units=1)   
   ])
 
@@ -527,23 +578,178 @@ def build_lstm_network(input_dim):
 
   return lstm_network
 
-w_single_wide = WindowGenerator(input_width=24,label_width=1,shift=1,train_df=df_train,val_df=df_val,test_df=df_val,label_columns=['T (degC)'])
 lstm_net_model = build_lstm_network((24,23))
 lstm_net_model.summary()
-lstm_net_model.fit(w_single_wide.train,
-                  validation_data=w_single_wide.val,
+lstm_net_model.fit(w_24h_wide.train,
+                  validation_data=w_24h_wide.val,
                   epochs=5
 )
 
-test_performance['LSTM']=lstm_net_model.evaluate(w_single_wide.test)
+test_performance['LSTM']=lstm_net_model.evaluate(w_24h_wide.test)
 logger.info(test_performance)
 
 
 #### multiple-step prediction: predicting 24 step = 24 hours in the Future the Temperature ###
-# Baseline: iso, taking into account only 1-time step input
+# Baseline: iso, taking into account only 1-time step input - same value
+OUT_STEPS = 24
+w_24in_24out = WindowGenerator(input_width=24,label_width=OUT_STEPS,shift=OUT_STEPS,train_df=df_train,val_df=df_val,test_df=df_test)
+w_24in_24out.plot()
+
+class MultiStepLastBaseline(tf.keras.Model):
+  def call(self, inputs):
+    return tf.tile(inputs[:, -1:, :], [1, OUT_STEPS, 1])
+
+last_baseline = MultiStepLastBaseline()
+last_baseline.compile(loss=tf.losses.MeanSquaredError(),
+                      metrics=[tf.metrics.MeanAbsoluteError()])
+
+multi_val_performance = {}
+multi_performance = {}
+
+multi_val_performance['Last'] = last_baseline.evaluate(w_24in_24out.val)
+multi_performance['Last'] = last_baseline.evaluate(w_24in_24out.test, verbose=0)
+w_24in_24out.plot(last_baseline)
+
+# Repeat Baseline - a copy of the day before
+class RepeatBaseline(tf.keras.Model):
+  def call(self,input):
+    return input
+  
+repeat_baseline = RepeatBaseline()
+repeat_baseline .compile(
+  loss='mse',
+  metrics='mae'
+)
+
+repeat_baseline.evaluate(w_24in_24out.val)
+w_24in_24out.plot(repeat_baseline)
+
 # Linear: linear model, 1 Neuron, taking into account only 1-time step input
+num_features=23
+def build_multi_linear_model():
+  multi_linear_model = tf.keras.models.Sequential([
+    # Take the last time-step.
+    # Shape [batch, time, features] => [batch, 1, features]
+    tf.keras.layers.Lambda(lambda x: x[:, -1:, :]),
+    # Shape => [batch, 1, out_steps*features]
+    tf.keras.layers.Dense(OUT_STEPS*num_features,
+                          kernel_initializer=tf.initializers.zeros),
+    # Shape => [batch, out_steps, features]
+    tf.keras.layers.Reshape([OUT_STEPS, num_features])
+  ])
+
+  multi_linear_model.compile(
+    optimizer='adam',
+    loss='mse',
+    metrics='mae'
+  )
+  return multi_linear_model
+
+multi_linear_model = build_multi_linear_model()
+#multi_linear_model.summary()
+multi_linear_model.fit(w_24in_24out.train,
+  validation_data = w_24in_24out.val,
+  epochs=5
+)
+
+w_24in_24out.plot(multi_linear_model)
+
 # Dense: introducing multiple steps from the past when flattening (if not Flatten, similar to taking only 1-record ? to double check)
+def build_multi_dense_model():
+  multi_dense_model = tf.keras.models.Sequential([
+    # Take the last time-step.
+    # Shape [batch, time, features] => [batch, 1, features]
+    tf.keras.layers.Lambda(lambda x: x[:, -1:, :]),
+    # Shape => [batch, 1, dense_units]
+    tf.keras.layers.Dense(64, activation='relu'),
+    # Shape => [batch, 1, out_steps*features]
+    tf.keras.layers.Dense(OUT_STEPS*num_features,
+                          kernel_initializer=tf.initializers.zeros),
+    # Shape => [batch, out_steps, features]
+    tf.keras.layers.Reshape([OUT_STEPS, num_features])
+  ])
+
+  multi_dense_model.compile(
+    optimizer='adam',
+    loss='mse',
+    metrics='mae'
+  )
+  return multi_dense_model
+
+  multi_dense_model = build_multi_dense_model()
+  multi_dense_model.fit(w_24in_24out.train,
+    validation_data=w_24in_24out.val,
+    epochs=5  
+  )
+  w_24in_24out.plot(multi_dense_model)
+
+
 # ConvNet: introducing operation multiple step from the past with Conv1D
+CONV_WIDTH = 3
+def build_multi_conv_model():
+  multi_conv_model = tf.keras.Sequential([
+      # Shape [batch, time, features] => [batch, CONV_WIDTH, features]
+      tf.keras.layers.Lambda(lambda x: x[:, -CONV_WIDTH:, :]),
+      # Shape => [batch, 1, conv_units]
+      tf.keras.layers.Conv1D(256, activation='relu', kernel_size=(CONV_WIDTH)),
+      # Shape => [batch, 1,  out_steps*features]
+      tf.keras.layers.Dense(OUT_STEPS*num_features,
+                            kernel_initializer=tf.initializers.zeros),
+      # Shape => [batch, out_steps, features]
+      tf.keras.layers.Reshape([OUT_STEPS, num_features])
+  ])
+  multi_conv_model.compile(
+    optimizer='adam',
+    loss='mse',
+    metrics='mae'
+  )
+  return multi_conv_model
+
+multi_conv_model = build_multi_conv_model()
+multi_conv_model.fit(w_24in_24out.train,
+    validation_data=w_24in_24out.val,
+    epochs=5  
+  )
+w_24in_24out.plot(multi_conv_model)
+
+
 # LSTM: having multiple steps from the past
+def build_multi_lstm_model():
+  multi_lstm_model = tf.keras.Sequential([
+      # Shape [batch, time, features] => [batch, CONV_WIDTH, features]
+      tf.keras.layers.Lambda(lambda x: x[:, -CONV_WIDTH:, :]),
+      # Shape => [batch, 1, conv_units]
+      tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(8)),
+      # Shape => [batch, 1,  out_steps*features]
+      tf.keras.layers.Dense(OUT_STEPS*num_features,
+                            kernel_initializer=tf.initializers.zeros),
+      # Shape => [batch, out_steps, features]
+      tf.keras.layers.Reshape([OUT_STEPS, num_features])
+  ])
+  multi_lstm_model.compile(
+    optimizer='adam',
+    loss='mse',
+    metrics='mae'
+  )
+  return multi_lstm_model
+
+multi_lstm_model = build_multi_conv_model()
+multi_lstm_model.fit(w_24in_24out.train,
+    validation_data=w_24in_24out.val,
+    epochs=5  
+  )
+w_24in_24out.plot(multi_conv_model)
+
+
+# Evaluate
+multi_performance={}
+multi_performance['Baseline']=last_baseline.evaluate(w_24in_24out.test)
+multi_performance['Repeat']=repeat_baseline.evaluate(w_24in_24out.test)
+multi_performance['Linear']=multi_linear_model.evaluate(w_24in_24out.test)
+multi_performance['Dense']=multi_dense_model.evaluate(w_24in_24out.test)
+multi_performance['Conv']=multi_conv_model.evaluate(w_24in_24out.test)
+multi_performance['LSTM']=multi_lstm_model.evaluate(w_24in_24out.test)
+multi_performance
+
 
 ### Auto-Regressive multiple-step predition ###
