@@ -72,3 +72,5 @@ def predict(model,input):
 mobilenet_model = transfer_mobilenet()
 history = compile_fit(mobilenet_model)
 
+mobilenetv2_model = transfer_mobilenetv2()
+history = compile_fit(mobilenetv2_model)
