@@ -42,12 +42,12 @@ def transfer_vgg16():
     # Load VGG19 architecture
     vgg16 = VGG16(input_shape=(32,32,3),weights='imagenet',include_top=False)
     vgg16.summary()
-    for layer in vgg19.layers:
+    for layer in vgg16.layers:
         layer.trainable = False
 
     # Define custom model
     inputs = tf.keras.Input(shape=(32,32,3))
-    x = vgg19(inputs,training=False)
+    x = vgg16(inputs,training=False)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
     outputs = tf.keras.layers.Dense(10,activation='softmax')(x)
     custom_vgg16 = tf.keras.Model(inputs,outputs)
