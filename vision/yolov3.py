@@ -1,1 +1,0 @@
-https://machinelearningmastery.com/how-to-perform-object-detection-with-yolov3-in-keras/
