@@ -137,7 +137,7 @@ def compile_fit(model):
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
     history = model.fit(train_dataset,
-        validation_data = test_dataset,
+        validation_data = validation_dataset,
         epochs=5,
         batch_size = 32
         #callbacks=tensorboard_callback
