@@ -20,78 +20,89 @@ x_test = x_test/255.0
 
 def transfer_resnet50():
     resnet50 = ResNet50(include_top=False,weights='imagenet',input_shape=(32,32,3))
-    resnet50.summary()
+    resnest50_preprocess = tf.keras.applications.resnet50.preprocess_input
 
     inputs = tf.keras.Input(shape=(32,32,3))
+    x = resnest50_preprocess(inputs)
     x = resnet50(inputs,training=False)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
     outputs = tf.keras.layers.Dense(units=10,activation='softmax')(x)
     custom_resnet50 = tf.keras.Model(inputs,outputs)
+    custom_resnet50.summary()
 
     return custom_resnet50
-
+    
 
 def transfer_resnet50v2():
     resnet50v2 = ResNet50V2(include_top=False,weights='imagenet',input_shape=(32,32,3))
-    resnet50v2.summary()
+    resnest50v2_preprocess = tf.keras.applications.resnet50.preprocess_input
 
     inputs = tf.keras.Input(shape=(32,32,3))
+    x = resnest50v2_preprocess(inputs)
     x = resnet50v2(inputs,training=False)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
     outputs = tf.keras.layers.Dense(units=10,activation='softmax')(x)
     custom_resnet50v2 = tf.keras.Model(inputs,outputs)
+    custom_resnet50v2.summary()
 
     return custom_resnet50v2
 
 
 def transfer_resnet101():
     resnet101 = ResNet101(include_top=False,weights='imagenet',input_shape=(32,32,3))
-    resnet101.summary()
+    resnet101_preprocess = tf.keras.applications.resnet50.preprocess_input
 
     inputs = tf.keras.Input(shape=(32,32,3))
+    x = resnet101_preprocess(inputs)
     x = resnet101(inputs,training=False)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
     outputs = tf.keras.layers.Dense(units=10,activation='softmax')(x)
     custom_resnet101 = tf.keras.Model(inputs,outputs)
+    custom_resnet101.summary()
 
     return custom_resnet101
 
 
 def transfer_resnet101v2():
     resnet101v2 = ResNet101V2(include_top=False,weights='imagenet',input_shape=(32,32,3))
-    resnet101v2.summary()
+    resnet101v2_preprocess = tf.keras.applications.resnet50.preprocess_input
 
     inputs = tf.keras.Input(shape=(32,32,3))
+    x = resnet101v2_preprocess(inputs)
     x = resnet101v2(inputs,training=False)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
     outputs = tf.keras.layers.Dense(units=10,activation='softmax')(x)
     custom_resnet101v2 = tf.keras.Model(inputs,outputs)
+    custom_resnet101v2.summary()
 
     return custom_resnet101v2
 
 
 def transfer_resnet152():
     resnet152 = ResNet152(include_top=False,weights='imagenet',input_shape=(32,32,3))
-    resnet152.summary()
+    resnet152_preprocess = tf.keras.applications.resnet50.preprocess_input
 
     inputs = tf.keras.Input(shape=(32,32,3))
+    x = resnet152_preprocess(inputs)
     x = resnet152(inputs,training=False)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
     outputs = tf.keras.layers.Dense(units=10,activation='softmax')(x)
     custom_resnet152 = tf.keras.Model(inputs,outputs)
+    custom_resnet152.summary()
 
     return custom_resnet152
 
 
 def transfer_resnet152v2():
     resnet152v2 = ResNet152V2(include_top=False,weights='imagenet',input_shape=(32,32,3))
-    resnet152v2.summary()
+    resnet152v2_preprocess = tf.keras.applications.resnet50.preprocess_input
 
     inputs = tf.keras.Input(shape=(32,32,3))
     x = resnet152v2(inputs,training=False)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
     outputs = tf.keras.layers.Dense(units=10,activation='softmax')(x)
     custom_resnet152v2 = tf.keras.Model(inputs,outputs)
+    custom_resnet152v2.summary()
 
     return custom_resnet152v2
 
@@ -109,8 +120,8 @@ def compile_fit(model):
     history = model.fit(x_train,y_train,
         validation_data = (x_test,y_test),
         epochs=5,
-        batch_size = 64,
-        callbacks=tensorboard_callback
+        batch_size = 32
+        #callbacks=tensorboard_callback
 
     )
     return history

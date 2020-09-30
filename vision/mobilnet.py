@@ -14,10 +14,6 @@ def plot_sample(sample,title):
     plt.title(f'Label:{title}, shape:{sample.shape}')
     plt.show()
 
-# Preprocess Data
-x_train = x_train/255.0
-x_test = x_test/255.0
-
 
 def transfer_mobilenet():
     mobilenet=MobileNet(include_top=False,input_shape=(32,32,3),weights='imagenet')
@@ -27,7 +23,7 @@ def transfer_mobilenet():
     x = mobilenet_preprocess(inputs)
     x = mobilenet(inputs,training=False)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
-    outputs = tf.keras.layers.Dense(1,activation='softmax')(x)
+    outputs = tf.keras.layers.Dense(10,activation='softmax')(x)
     custom_mobilenet = tf.keras.Model(inputs,outputs)
     custom_mobilenet.summary()
     return custom_mobilenet
@@ -62,11 +58,11 @@ def compile_fit(model):
     history = model.fit(x_train,y_train,
         validation_data = (x_test,y_test),
         epochs=5,
-        callbacks=tensorboard_callback
+        batch_size=32
+        #callbacks=tensorboard_callback
     )
 
     return history
-
 
 def predict(model,input):
     prediction = model.predict(input)

@@ -58,7 +58,7 @@ def transfer_mobilenetv2():
     x = mobilenetv2_preprocess(inputs)
     x = mobilenetv2(inputs,training=False)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
-    outputs = tf.keras.layers.Dense(10,activation='sigmoid')(x)
+    outputs = tf.keras.layers.Dense(1,activation='sigmoid')(x)
     custom_mobilenetv2 = tf.keras.Model(inputs,outputs)
     custom_mobilenetv2.summary()
     return custom_mobilenetv2
@@ -79,6 +79,7 @@ def compile_fit(model):
     history = model.fit(train_dataset,
         validation_data = validation_dataset,
         epochs=5,
+        batch_size=32
         #callbacks=tensorboard_callback
     )
 

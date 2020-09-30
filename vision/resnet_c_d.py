@@ -51,9 +51,9 @@ def transfer_resnet50():
 
 def transfer_resnet50v2():
     resnet50v2 = ResNet50V2(include_top=False,weights='imagenet',input_shape=(160,160,3))
-    resnet50v2_preprocess = tf.keras.applications.resnet50v2.preprocess_input
+    resnet50v2_preprocess = tf.keras.applications.resnet50.preprocess_input
 
-    inputs = tf.keras.Input(shape=((160,160,3))
+    inputs = tf.keras.Input(shape=(160,160,3))
     x = resnet50v2_preprocess(inputs)
     x = resnet50v2(inputs,training=False)
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
@@ -66,7 +66,7 @@ def transfer_resnet50v2():
 
 def transfer_resnet101():
     resnet101 = ResNet101(include_top=False,weights='imagenet',input_shape=(160,160,3))
-    resnet101_preprocess = tf.keras.applications.resnet101.preprocess_input
+    resnet101_preprocess = tf.keras.applications.resnet50.preprocess_input
 
     inputs = tf.keras.Input(shape=(160,160,3))
     x = resnet101_preprocess(inputs)
@@ -81,7 +81,7 @@ def transfer_resnet101():
 
 def transfer_resnet101v2():
     resnet101v2 = ResNet101V2(include_top=False,weights='imagenet',input_shape=(160,160,3))
-    resnet101v2_preprocess = tf.keras.applications.resnet101v2.preprocess_input
+    resnet101v2_preprocess = tf.keras.applications.resnet50.preprocess_input
 
     inputs = tf.keras.Input(shape=(160,160,3))
     x = resnet101v2_preprocess(inputs)
@@ -96,7 +96,7 @@ def transfer_resnet101v2():
 
 def transfer_resnet152():
     resnet152 = ResNet152(include_top=False,weights='imagenet',input_shape=(160,160,3))
-    resnet152_preprocess = tf.keras.applications.resnet152.preprocess_input
+    resnet152_preprocess = tf.keras.applications.resnet50.preprocess_input
 
 
     inputs = tf.keras.Input(shape=(160,160,3))
@@ -112,7 +112,7 @@ def transfer_resnet152():
 
 def transfer_resnet152v2():
     resnet152v2 = ResNet152V2(include_top=False,weights='imagenet',input_shape=(160,160,3))
-    resnet152v2_preprocess = tf.keras.applications.resnet152v2.preprocess_input
+    resnet152v2_preprocess = tf.keras.applications.resnet50.preprocess_input
 
 
     inputs = tf.keras.Input(shape=(160,160,3))
@@ -139,7 +139,7 @@ def compile_fit(model):
     history = model.fit(train_dataset,
         validation_data = test_dataset,
         epochs=5,
-        batch_size = 64,
+        batch_size = 32
         #callbacks=tensorboard_callback
 
     )
