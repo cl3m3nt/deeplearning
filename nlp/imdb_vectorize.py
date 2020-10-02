@@ -7,6 +7,7 @@ import os
 import re
 import string
 import shutil
+import io
 
 # Get Data from TFDS
 imdb = tfds.load('imdb_reviews',as_supervised=True)
@@ -139,3 +140,28 @@ history = compile_fit(model)
 model.summary()
 
 # Get Vocabulary & Embeddings
+vocab = vectorize_layer.get_vocabulary()
+print(vocab[:10])
+# Get weights matrix of layer named 'embedding'
+weights = model.get_layer('embedding').get_weights()[0]
+print(weights.shape) 
+
+# Save Vocab & Embedding to Disk
+out_v = io.open('vecs.tsv', 'w', encoding='utf-8')
+out_m = io.open('meta.tsv', 'w', encoding='utf-8')
+
+for num, word in enumerate(vocab):
+    if num == 0: continue # skip padding token from vocab
+    vec = weights[num]
+    out_m.write(word + "\n")
+    out_v.write('\t'.join([str(x) for x in vec]) + "\n")
+out_v.close()
+out_m.close()
+
+try:
+    from google.colab import files
+except ImportError:
+    pass
+else:
+    files.download('vecs.tsv')
+    files.download('meta.tsv')
