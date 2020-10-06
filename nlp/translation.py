@@ -1,5 +1,5 @@
 import tensorflow as tf 
-import matplotlib.pyplot as pyplot
+import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from sklearn.model_selection import train_test_split
 import unicodedata
